@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SpreadsheetApp.MainPage"
+             Title="Лабораторна робота №1 — Варіант 67">
+
+    <ContentPage.MenuBarItems>
+        <MenuBarItem Text="Файл">
+            <MenuFlyoutItem Text="Відкрити" Clicked="OnOpenClicked" />
+            <MenuFlyoutItem Text="Зберегти" Clicked="OnSaveClicked" />
+            <MenuFlyoutItem Text="Очистити таблицю" Clicked="OnClearAllClicked" />
+            <MenuFlyoutItem Text="Вихід" Clicked="OnExitClicked" />
+        </MenuBarItem>
+
+        <MenuBarItem Text="Таблиця">
+            <MenuFlyoutItem Text="Додати рядок" Clicked="OnAddRowClicked" />
+            <MenuFlyoutItem Text="Видалити рядок" Clicked="OnDeleteRowClicked" />
+            <MenuFlyoutItem Text="Додати стовпчик" Clicked="OnAddColumnClicked" />
+            <MenuFlyoutItem Text="Видалити стовпчик" Clicked="OnDeleteColumnClicked" />
+            <MenuFlyoutItem Text="Очистити клітинку" Clicked="OnClearCellClicked" />
+        </MenuBarItem>
+
+        <MenuBarItem Text="Обчислення">
+            <MenuFlyoutItem Text="Порахувати" Clicked="OnCalculateClicked" />
+            <MenuFlyoutItem Text="Перемкнути режим (ВИРАЗ / ЗНАЧЕННЯ)" Clicked="OnSwitchModeClicked" />
+        </MenuBarItem>
+
+        <MenuBarItem Text="Довідка">
+            <MenuFlyoutItem Text="Довідка" Clicked="OnHelpClicked" />
+            <MenuFlyoutItem Text="Про програму" Clicked="OnAboutClicked" />
+        </MenuBarItem>
+    </ContentPage.MenuBarItems>
+
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Padding="8" RowSpacing="6">
+
+        <!-- Панель кнопок (як у посібнику MAUI, стор. 244) -->
+        <ScrollView Grid.Row="0" Orientation="Horizontal">
+            <StackLayout Orientation="Horizontal" Spacing="6">
+                <Button Text="Порахувати" Clicked="OnCalculateClicked" />
+                <Button x:Name="modeButton" Text="Режим: ВИРАЗ" Clicked="OnSwitchModeClicked" />
+                <Button Text="Додати рядок" Clicked="OnAddRowClicked" />
+                <Button Text="Видалити рядок" Clicked="OnDeleteRowClicked" />
+                <Button Text="Додати стовпчик" Clicked="OnAddColumnClicked" />
+                <Button Text="Видалити стовпчик" Clicked="OnDeleteColumnClicked" />
+                <Button Text="Зберегти" Clicked="OnSaveClicked" />
+                <Button Text="Відкрити" Clicked="OnOpenClicked" />
+                <Button Text="Довідка" Clicked="OnHelpClicked" />
+                <Button Text="Про програму" Clicked="OnAboutClicked" />
+                <Button Text="Вихід" Clicked="OnExitClicked" />
+            </StackLayout>
+        </ScrollView>
+
+        <!-- Рядок введення виразу -->
+        <Grid Grid.Row="1" ColumnDefinitions="60, *, Auto, Auto" ColumnSpacing="6">
+            <Label x:Name="activeCellLabel"
+                   Grid.Column="0"
+                   Text="A1"
+                   HorizontalTextAlignment="Center"
+                   VerticalTextAlignment="Center"
+                   FontAttributes="Bold" />
+
+            <Entry x:Name="textInput"
+                   Grid.Column="1"
+                   Placeholder="Введіть вираз"
+                   Completed="OnFormulaBarCompleted"
+                   Unfocused="OnFormulaBarUnfocused" />
+
+            <Button Grid.Column="2" Text="OK" Clicked="OnApplyFormulaClicked" />
+            <Button Grid.Column="3" Text="Очистити клітинку" Clicked="OnClearCellClicked" />
+        </Grid>
+
+        <!-- Сітка таблиці -->
+        <ScrollView Grid.Row="2" Orientation="Both">
+            <Grid x:Name="grid" RowSpacing="2" ColumnSpacing="2" />
+        </ScrollView>
+
+        <!-- Рядок стану -->
+        <Label x:Name="statusLabel"
+               Grid.Row="3"
+               Text="Активна клітинка: A1 | Режим: ВИРАЗ" />
+    </Grid>
+</ContentPage>

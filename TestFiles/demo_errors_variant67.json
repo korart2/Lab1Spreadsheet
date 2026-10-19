@@ -1,0 +1,12 @@
+{
+  "RowCount": 6,
+  "ColumnCount": 5,
+  "Cells": [
+    { "Address": "A1", "Expression": "70" },
+    { "Address": "B1", "Expression": "A1 >=" },
+    { "Address": "A2", "Expression": "5 and 3" },
+    { "Address": "A3", "Expression": "B3 <= 10" },
+    { "Address": "B3", "Expression": "inc(A3)" },
+    { "Address": "A4", "Expression": "Z99 >= 0" }
+  ]
+}

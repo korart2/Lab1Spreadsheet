@@ -1,0 +1,16 @@
+{
+  "RowCount": 8,
+  "ColumnCount": 6,
+  "Cells": [
+    { "Address": "A1", "Expression": "70" },
+    { "Address": "B1", "Expression": "67" },
+    { "Address": "C1", "Expression": "1000" },
+    { "Address": "D1", "Expression": "A1 >= B1 and C1 >= 1" },
+    { "Address": "A2", "Expression": "999999999999999999999999999999" },
+    { "Address": "B2", "Expression": "inc(A2)" },
+    { "Address": "C2", "Expression": "dec(B2) <= A2 and B2 <> A2" },
+    { "Address": "A3", "Expression": "-15" },
+    { "Address": "B3", "Expression": "+10" },
+    { "Address": "C3", "Expression": "not (A3 >= B3) or false" }
+  ]
+}
