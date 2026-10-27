@@ -9,19 +9,22 @@ public class Variant67Tests
     public void SequenceDiagramScenario_WorksExactlyAsDesigned()
     {
         var ctrl = new SpreadsheetController(10, 10);
-        ctrl.setCellExpression("A1", "70");
-        ctrl.setCellExpression("B1", "67");
-        ctrl.setCellExpression("C1", "1000");
+        Spreadsheet table = ctrl.getTable();
 
-        ctrl.setCellExpression("D1", "A1 >=");
-        Spreadsheet table = ctrl.calculate();
+        table.getCell("A1")!.setExpression("70");
+        table.getCell("B1")!.setExpression("67");
+        table.getCell("C1")!.setExpression("1000");
+
+        table.getCell("D1")!.setExpression("A1 >=");
+        ctrl.calculate();
 
         Cell? d1 = table.getCell("D1");
         Assert.NotNull(d1);
         Assert.NotNull(d1.getError());
+        Assert.Equal("Синтаксична помилка", d1.getError()!.getType());
         Assert.Equal(5, d1.getError()!.getPosition());
 
-        ctrl.setCellExpression("D1", "A1 >= B1 and C1 >= 1");
+        table.getCell("D1")!.setExpression("A1 >= B1 and C1 >= 1");
         ctrl.calculate();
 
         Assert.Null(d1.getError());
@@ -39,7 +42,7 @@ public class Variant67Tests
     public void Variant67_OperationsAndPrecedence_EvaluateCorrectly(string expr, bool expected)
     {
         var ctrl = new SpreadsheetController(5, 5);
-        ctrl.setCellExpression("B2", expr);
+        ctrl.getTable().getCell("B2")!.setExpression(expr);
         Spreadsheet table = ctrl.calculate();
 
         Cell? b2 = table.getCell("B2");
@@ -52,82 +55,89 @@ public class Variant67Tests
     public void BigInteger_ArbitraryLength_EvaluatesCorrectly()
     {
         var ctrl = new SpreadsheetController(5, 5);
-        ctrl.setCellExpression("A1", "999999999999999999999999999999999999999999");
-        ctrl.setCellExpression("A2", "inc(A1)");
-        ctrl.setCellExpression("A3", "A2 >= A1 and A2 <> A1");
-        Spreadsheet table = ctrl.calculate();
+        Spreadsheet table = ctrl.getTable();
+        table.getCell("A1")!.setExpression("999999999999999999999999999999999999999999");
+        table.getCell("A2")!.setExpression("inc(A1)");
+        table.getCell("A3")!.setExpression("A2 >= A1 and A2 <> A1");
+        ctrl.calculate();
 
         Assert.Equal(BigInteger.Parse("1000000000000000000000000000000000000000000"), table.getCell("A2")!.getValue()!.asInteger());
         Assert.Equal(new Value(true), table.getCell("A3")!.getValue());
     }
 
     [Fact]
-    public void ChainedFormulas_EvaluatedInTopologicalOrder()
+    public void DeleteArbitraryRowAndColumn_ShiftsCellsAndUpdatesFormulaReferences()
     {
         var ctrl = new SpreadsheetController(5, 5);
-        ctrl.setCellExpression("A1", "not B1");
-        ctrl.setCellExpression("B1", "C1 <= 10");
-        ctrl.setCellExpression("C1", "inc(9)");
+        Spreadsheet table = ctrl.getTable();
 
-        Spreadsheet table = ctrl.calculate();
+        table.getCell("A1")!.setExpression("10");
+        table.getCell("A2")!.setExpression("20");
+        table.getCell("A3")!.setExpression("70");
+        table.getCell("A4")!.setExpression("inc(A3)");
 
-        Assert.Equal(new Value(new BigInteger(10)), table.getCell("C1")!.getValue());
-        Assert.Equal(new Value(true), table.getCell("B1")!.getValue());
-        Assert.Equal(new Value(false), table.getCell("A1")!.getValue());
+        Assert.True(table.deleteRow(2));
+        ctrl.calculate();
+
+        Assert.Equal("70", table.getCell("A2")!.getExpression());
+        Assert.Equal("inc(A2)", table.getCell("A3")!.getExpression());
+        Assert.Equal(new Value(new BigInteger(71)), table.getCell("A3")!.getValue());
+
+        Assert.True(table.deleteRow(2));
+        ctrl.calculate();
+
+        Cell? shiftedFormulaCell = table.getCell("A2");
+        Assert.NotNull(shiftedFormulaCell!.getError());
+        Assert.Equal("Помилка посилання", shiftedFormulaCell.getError()!.getType());
     }
 
     [Fact]
-    public void CycleDetection_ReportsCycleErrorInBothCells()
+    public void InsertArbitraryColumn_ShiftsCellsAndUpdatesFormulaReferences()
     {
         var ctrl = new SpreadsheetController(5, 5);
-        ctrl.setCellExpression("A1", "B1 <= 5");
-        ctrl.setCellExpression("B1", "inc(A1)");
+        Spreadsheet table = ctrl.getTable();
 
-        Spreadsheet table = ctrl.calculate();
+        table.getCell("B1")!.setExpression("50");
+        table.getCell("C1")!.setExpression("B1 >= 40");
 
-        Assert.NotNull(table.getCell("A1")!.getError());
-        Assert.Contains("Циклічне посилання", table.getCell("A1")!.getError()!.getMessage());
-        Assert.NotNull(table.getCell("B1")!.getError());
-        Assert.Contains("Циклічне посилання", table.getCell("B1")!.getError()!.getMessage());
+        table.addColumn(2);
+        ctrl.calculate();
+
+        Assert.Equal("50", table.getCell("C1")!.getExpression());
+        Assert.Equal("C1 >= 40", table.getCell("D1")!.getExpression());
+        Assert.Equal(new Value(true), table.getCell("D1")!.getValue());
+    }
+
+    [Fact]
+    public void CycleDetection_ReportsCycleErrorTypeInBothCells()
+    {
+        var ctrl = new SpreadsheetController(5, 5);
+        Spreadsheet table = ctrl.getTable();
+        table.getCell("A1")!.setExpression("B1 <= 5");
+        table.getCell("B1")!.setExpression("inc(A1)");
+
+        ctrl.calculate();
+
+        Assert.Equal("Циклічне посилання", table.getCell("A1")!.getError()!.getType());
+        Assert.Equal("Циклічне посилання", table.getCell("B1")!.getError()!.getType());
     }
 
     [Theory]
-    [InlineData("5 and 3")]
-    [InlineData("not A1")]
-    [InlineData("inc(true)")]
-    [InlineData("Z99 <= 5")]
-    [InlineData("A1 = 5")]
-    public void InvalidExpressions_ProduceLocalizedErrors(string invalidExpr)
+    [InlineData("5 and 3", "Помилка типів")]
+    [InlineData("not A1", "Помилка типів")]
+    [InlineData("inc(true)", "Помилка типів")]
+    [InlineData("Z99 <= 5", "Помилка посилання")]
+    [InlineData("A1 = 5", "Лексична помилка")]
+    public void InvalidExpressions_ProduceSpecificErrorTypeAndPosition(string invalidExpr, string expectedType)
     {
         var ctrl = new SpreadsheetController(5, 5);
-        ctrl.setCellExpression("B1", invalidExpr);
+        ctrl.getTable().getCell("B1")!.setExpression(invalidExpr);
         Spreadsheet table = ctrl.calculate();
 
         Cell? b1 = table.getCell("B1");
-        Assert.NotNull(b1);
-        Assert.NotNull(b1.getError());
+        Assert.NotNull(b1?.getError());
+        Assert.Equal(expectedType, b1!.getError()!.getType());
         Assert.True(b1.getError()!.getPosition() >= 0);
-    }
-
-    [Fact]
-    public void TableResize_AddAndDeleteRowColumn_RespectsMinimumSize()
-    {
-        var ctrl = new SpreadsheetController(2, 2);
-        ctrl.setCellExpression("B2", "inc(5)");
-
-        Assert.True(ctrl.deleteRow());
-        Assert.Equal(1, ctrl.Table.RowCount);
-        Assert.Null(ctrl.Table.getCell("B2"));
-        Assert.False(ctrl.deleteRow()); // Нельзя удалить единственную строку
-
-        Assert.True(ctrl.deleteColumn());
-        Assert.Equal(1, ctrl.Table.ColumnCount);
-        Assert.False(ctrl.deleteColumn()); // Нельзя удалить единственный столбец
-
-        ctrl.addRow();
-        ctrl.addColumn();
-        Assert.Equal(2, ctrl.Table.RowCount);
-        Assert.Equal(2, ctrl.Table.ColumnCount);
     }
 
     [Fact]
@@ -137,16 +147,16 @@ public class Variant67Tests
         try
         {
             var ctrl = new SpreadsheetController(6, 4);
-            ctrl.setCellExpression("A1", "70");
-            ctrl.setCellExpression("B1", "67");
-            ctrl.setCellExpression("C1", "A1 >= B1 and not (inc(B1) <= A1)");
-            ctrl.saveToFile(tempFile);
+            ctrl.getTable().getCell("A1")!.setExpression("70");
+            ctrl.getTable().getCell("B1")!.setExpression("67");
+            ctrl.getTable().getCell("C1")!.setExpression("A1 >= B1 and not (inc(B1) <= A1)");
+            ctrl.saveTable(tempFile);
 
             var loadedCtrl = new SpreadsheetController(2, 2);
-            Spreadsheet loadedTable = loadedCtrl.loadFromFile(tempFile);
+            Spreadsheet loadedTable = loadedCtrl.openTable(tempFile);
 
-            Assert.Equal(6, loadedTable.RowCount);
-            Assert.Equal(4, loadedTable.ColumnCount);
+            Assert.Equal(6, loadedTable.getRowCount());
+            Assert.Equal(4, loadedTable.getColumnCount());
             Assert.Equal(new Value(false), loadedTable.getCell("C1")!.getValue());
         }
         finally

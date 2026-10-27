@@ -18,14 +18,13 @@ public class SpreadsheetStorage
         public List<CellDto> Cells { get; set; } = new();
     }
 
-    public void save(Spreadsheet table, string filePath)
+    public bool save(Spreadsheet table, string path)
     {
         var dto = new TableDto
         {
-            RowCount = table.RowCount,
-            ColumnCount = table.ColumnCount,
-            Cells = table.Cells
-                .Where(c => !string.IsNullOrWhiteSpace(c.getExpression()))
+            RowCount = table.getRowCount(),
+            ColumnCount = table.getColumnCount(),
+            Cells = table.getFilledCells()
                 .Select(c => new CellDto
                 {
                     Address = c.getAddress(),
@@ -40,27 +39,25 @@ public class SpreadsheetStorage
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
         string json = JsonSerializer.Serialize(dto, options);
-        File.WriteAllText(filePath, json);
+        File.WriteAllText(path, json);
+        return true;
     }
 
-    public Spreadsheet load(string filePath)
+    public Spreadsheet load(string path)
     {
-        if (!File.Exists(filePath))
+        if (!File.Exists(path))
         {
-            throw new FileNotFoundException("Файл таблиці не знайдено.", filePath);
+            throw new FileNotFoundException("Файл таблиці не знайдено.", path);
         }
 
-        string json = File.ReadAllText(filePath);
+        string json = File.ReadAllText(path);
         TableDto? dto = JsonSerializer.Deserialize<TableDto>(json)
             ?? throw new InvalidDataException("Некоректний формат файлу таблиці.");
 
         var table = new Spreadsheet(dto.RowCount, dto.ColumnCount);
         foreach (var cellDto in dto.Cells)
         {
-            if (table.IsValidAddress(cellDto.Address))
-            {
-                table.setExpression(cellDto.Address, cellDto.Expression);
-            }
+            table.getCell(cellDto.Address)?.setExpression(cellDto.Expression);
         }
 
         return table;

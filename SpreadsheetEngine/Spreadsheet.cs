@@ -1,4 +1,6 @@
 using System.Numerics;
+using System.Text;
+using Antlr4.Runtime;
 
 namespace SpreadsheetEngine;
 
@@ -8,15 +10,24 @@ public class Spreadsheet
     private int columnCount;
     private readonly List<Cell> cells = new();
 
-    public Spreadsheet(int rowCount = 10, int columnCount = 10)
+    public Spreadsheet(int rowCount = 10, int columnCount = 8)
     {
         this.rowCount = Math.Max(1, rowCount);
         this.columnCount = Math.Max(1, columnCount);
     }
 
-    public int RowCount => rowCount;
-    public int ColumnCount => columnCount;
-    public IReadOnlyList<Cell> Cells => cells;
+    public int getRowCount() => rowCount;
+    public int getColumnCount() => columnCount;
+
+    public List<Cell> getFilledCells()
+    {
+        return cells.Where(c => !string.IsNullOrWhiteSpace(c.getExpression())).ToList();
+    }
+
+    public List<Cell> getFormulaCells()
+    {
+        return cells.Where(c => c.isFormula()).ToList();
+    }
 
     public Cell? getCell(string address)
     {
@@ -26,41 +37,24 @@ public class Spreadsheet
             return null;
         }
 
-        return cells.FirstOrDefault(c => c.getAddress() == normalized);
-    }
-
-    public void setExpression(string address, string expression)
-    {
-        string normalized = NormalizeAddress(address);
-        if (!IsValidAddress(normalized))
-        {
-            throw new ArgumentOutOfRangeException(nameof(address), $"Клітинка {normalized} виходить за межі таблиці.");
-        }
-
         Cell? cell = cells.FirstOrDefault(c => c.getAddress() == normalized);
-        if (string.IsNullOrWhiteSpace(expression))
-        {
-            if (cell != null)
-            {
-                cell.clear();
-                cells.Remove(cell);
-            }
-            return;
-        }
-
         if (cell == null)
         {
             cell = new Cell(normalized);
             cells.Add(cell);
         }
-
-        cell.setExpression(expression);
+        return cell;
     }
 
     public Value getValue(string address)
     {
         string normalized = NormalizeAddress(address);
-        Cell? cell = getCell(normalized);
+        if (!IsValidAddress(normalized))
+        {
+            return new Value(BigInteger.Zero);
+        }
+
+        Cell? cell = cells.FirstOrDefault(c => c.getAddress() == normalized);
         if (cell == null || string.IsNullOrWhiteSpace(cell.getExpression()))
         {
             return new Value(BigInteger.Zero);
@@ -69,49 +63,87 @@ public class Spreadsheet
         return cell.getValue() ?? new Value(BigInteger.Zero);
     }
 
-    public List<Cell> getFormulaCells()
+    public void addRow(int index = -1)
     {
-        return cells.Where(c => c.isFormula()).ToList();
+        int insertAt = (index < 1 || index > rowCount + 1) ? rowCount + 1 : index;
+        rowCount++;
+
+        foreach (Cell cell in cells)
+        {
+            if (TryParseAddress(cell.getAddress(), out int r, out int c) && r >= insertAt)
+            {
+                cell.setAddress(FormatAddress(r + 1, c));
+            }
+        }
+
+        UpdateReferencesOnRowChange(insertAt, isDelete: false);
     }
 
-    public void addRow() => rowCount++;
-
-    public bool deleteRow()
+    public bool deleteRow(int index = -1)
     {
         if (rowCount <= 1) return false;
 
-        int targetRow = rowCount;
+        int targetRow = (index < 1 || index > rowCount) ? rowCount : index;
+
         cells.RemoveAll(c => TryParseAddress(c.getAddress(), out int r, out _) && r == targetRow);
+
+        foreach (Cell cell in cells)
+        {
+            if (TryParseAddress(cell.getAddress(), out int r, out int c) && r > targetRow)
+            {
+                cell.setAddress(FormatAddress(r - 1, c));
+            }
+        }
+
         rowCount--;
+        UpdateReferencesOnRowChange(targetRow, isDelete: true);
         return true;
     }
 
-    public void addColumn() => columnCount++;
+    public void addColumn(int index = -1)
+    {
+        int insertAt = (index < 1 || index > columnCount + 1) ? columnCount + 1 : index;
+        columnCount++;
 
-    public bool deleteColumn()
+        foreach (Cell cell in cells)
+        {
+            if (TryParseAddress(cell.getAddress(), out int r, out int c) && c >= insertAt)
+            {
+                cell.setAddress(FormatAddress(r, c + 1));
+            }
+        }
+
+        UpdateReferencesOnColumnChange(insertAt, isDelete: false);
+    }
+
+    public bool deleteColumn(int index = -1)
     {
         if (columnCount <= 1) return false;
 
-        int targetCol = columnCount;
+        int targetCol = (index < 1 || index > columnCount) ? columnCount : index;
+
         cells.RemoveAll(c => TryParseAddress(c.getAddress(), out _, out int col) && col == targetCol);
+
+        foreach (Cell cell in cells)
+        {
+            if (TryParseAddress(cell.getAddress(), out int r, out int c) && c > targetCol)
+            {
+                cell.setAddress(FormatAddress(r, c - 1));
+            }
+        }
+
         columnCount--;
+        UpdateReferencesOnColumnChange(targetCol, isDelete: true);
         return true;
     }
 
     public void clearAll()
     {
-        foreach (var cell in cells)
+        foreach (Cell cell in cells)
         {
             cell.clear();
         }
         cells.Clear();
-    }
-
-    public void Resize(int newRows, int newCols)
-    {
-        rowCount = Math.Max(1, newRows);
-        columnCount = Math.Max(1, newCols);
-        cells.RemoveAll(c => !IsValidAddress(c.getAddress()));
     }
 
     public bool IsValidAddress(string address)
@@ -121,6 +153,102 @@ public class Spreadsheet
             return false;
         }
         return row >= 1 && row <= rowCount && col >= 1 && col <= columnCount;
+    }
+
+    private void UpdateReferencesOnRowChange(int targetRow, bool isDelete)
+    {
+        foreach (Cell cell in getFormulaCells())
+        {
+            string expr = cell.getExpression();
+            var lexer = new ExpressionLexer(new AntlrInputStream(expr));
+            lexer.RemoveErrorListeners();
+            IList<IToken> tokens = lexer.GetAllTokens();
+
+            var sb = new StringBuilder();
+            int lastPos = 0;
+
+            foreach (IToken token in tokens)
+            {
+                sb.Append(expr, lastPos, token.StartIndex - lastPos);
+
+                if (token.Type == ExpressionLexer.IDENTIFIER && TryParseAddress(token.Text, out int r, out int c))
+                {
+                    if (isDelete && r == targetRow)
+                    {
+                        sb.Append("#REF!");
+                    }
+                    else if (isDelete && r > targetRow)
+                    {
+                        sb.Append(FormatAddress(r - 1, c));
+                    }
+                    else if (!isDelete && r >= targetRow)
+                    {
+                        sb.Append(FormatAddress(r + 1, c));
+                    }
+                    else
+                    {
+                        sb.Append(token.Text);
+                    }
+                }
+                else
+                {
+                    sb.Append(token.Text);
+                }
+
+                lastPos = token.StopIndex + 1;
+            }
+
+            sb.Append(expr, lastPos, expr.Length - lastPos);
+            cell.setExpression(sb.ToString());
+        }
+    }
+
+    private void UpdateReferencesOnColumnChange(int targetCol, bool isDelete)
+    {
+        foreach (Cell cell in getFormulaCells())
+        {
+            string expr = cell.getExpression();
+            var lexer = new ExpressionLexer(new AntlrInputStream(expr));
+            lexer.RemoveErrorListeners();
+            IList<IToken> tokens = lexer.GetAllTokens();
+
+            var sb = new StringBuilder();
+            int lastPos = 0;
+
+            foreach (IToken token in tokens)
+            {
+                sb.Append(expr, lastPos, token.StartIndex - lastPos);
+
+                if (token.Type == ExpressionLexer.IDENTIFIER && TryParseAddress(token.Text, out int r, out int c))
+                {
+                    if (isDelete && c == targetCol)
+                    {
+                        sb.Append("#REF!");
+                    }
+                    else if (isDelete && c > targetCol)
+                    {
+                        sb.Append(FormatAddress(r, c - 1));
+                    }
+                    else if (!isDelete && c >= targetCol)
+                    {
+                        sb.Append(FormatAddress(r, c + 1));
+                    }
+                    else
+                    {
+                        sb.Append(token.Text);
+                    }
+                }
+                else
+                {
+                    sb.Append(token.Text);
+                }
+
+                lastPos = token.StopIndex + 1;
+            }
+
+            sb.Append(expr, lastPos, expr.Length - lastPos);
+            cell.setExpression(sb.ToString());
+        }
     }
 
     public static bool TryParseAddress(string address, out int row, out int col)

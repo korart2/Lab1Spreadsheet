@@ -6,14 +6,13 @@ public class SyntaxErrorListener : BaseErrorListener, IAntlrErrorListener<int>
 {
     private readonly List<ExpressionError> errors = new();
 
-    public void syntaxError(int line, int column, string message)
+    public void syntaxError(int line, int position, string message)
     {
-        errors.Add(new ExpressionError(column, message));
+        errors.Add(new ExpressionError("Синтаксична помилка", position, message));
     }
 
     public List<ExpressionError> getErrors() => errors;
 
-    // Перехват лексических ошибок (неизвестные символы, например '@', '=')
     public void SyntaxError(
         TextWriter output,
         IRecognizer recognizer,
@@ -23,10 +22,18 @@ public class SyntaxErrorListener : BaseErrorListener, IAntlrErrorListener<int>
         string msg,
         RecognitionException e)
     {
-        syntaxError(line, charPositionInLine, $"Невідомий символ або лексична помилка ({msg})");
+        string input = recognizer.InputStream?.ToString() ?? string.Empty;
+        if (charPositionInLine >= 0
+            && charPositionInLine < input.Length
+            && input[charPositionInLine..].StartsWith("#REF!", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add(new ExpressionError("Помилка посилання", charPositionInLine, "Посилання на видалену клітинку (#REF!)."));
+            return;
+        }
+
+        errors.Add(new ExpressionError("Лексична помилка", charPositionInLine, $"Невідомий символ у виразі ({msg})."));
     }
 
-    // Перехват синтаксических ошибок парсера
     public override void SyntaxError(
         TextWriter output,
         IRecognizer recognizer,
@@ -38,8 +45,8 @@ public class SyntaxErrorListener : BaseErrorListener, IAntlrErrorListener<int>
     {
         string tokenText = offendingSymbol?.Text ?? "<EOF>";
         string cleanMsg = tokenText == "<EOF>"
-            ? "Неочікуваний кінець виразу (вираз незавершено)"
-            : $"Синтаксична помилка біля '{tokenText}'";
+            ? "Неочікуваний кінець виразу (вираз незавершено)."
+            : $"Неочікуваний токен '{tokenText}'.";
 
         syntaxError(line, charPositionInLine, cleanMsg);
     }

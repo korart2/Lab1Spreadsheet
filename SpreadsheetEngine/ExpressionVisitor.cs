@@ -7,9 +7,9 @@ public class EvaluationException : Exception
 {
     public ExpressionError Error { get; }
 
-    public EvaluationException(int position, string message) : base(message)
+    public EvaluationException(string type, int position, string message) : base(message)
     {
-        Error = new ExpressionError(position, message);
+        Error = new ExpressionError(type, position, message);
     }
 }
 
@@ -80,7 +80,7 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
             ExpressionLexer.LE => left <= right,
             ExpressionLexer.GE => left >= right,
             ExpressionLexer.NE => left != right,
-            _ => throw new EvaluationException(opCol, $"Невідомий оператор порівняння '{opText}'.")
+            _ => throw new EvaluationException("Синтаксична помилка", opCol, $"Невідомий оператор порівняння '{opText}'.")
         };
 
         return new Value(result);
@@ -128,7 +128,7 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
         string text = context.NUMBER().GetText();
         if (!BigInteger.TryParse(text, out BigInteger number))
         {
-            throw new EvaluationException(context.Start.Column, $"Некоректне ціле число '{text}'.");
+            throw new EvaluationException("Помилка типів", context.Start.Column, $"Некоректне ціле число '{text}'.");
         }
         return new Value(number);
     }
@@ -140,13 +140,13 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
 
         if (!table.IsValidAddress(address))
         {
-            throw new EvaluationException(col, $"Посилання на неіснуючу клітинку '{address}' (поза межами таблиці).");
+            throw new EvaluationException("Помилка посилання", col, $"Посилання на неіснуючу клітинку '{address}' (поза межами таблиці).");
         }
 
         Cell? cell = table.getCell(address);
         if (cell != null && cell.getError() != null)
         {
-            throw new EvaluationException(col, $"Посилання на клітинку '{address}', яка містить помилку.");
+            throw new EvaluationException("Помилка посилання", col, $"Посилання на клітинку '{address}', яка містить помилку.");
         }
 
         return table.getValue(address);
@@ -156,7 +156,7 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
     {
         if (val.IsLogical)
         {
-            throw new EvaluationException(position, $"Операція '{opName}' вимагає цілого числа, але отримано логічне значення ({val}).");
+            throw new EvaluationException("Помилка типів", position, $"Операція '{opName}' вимагає цілого числа, але отримано логічне значення ({val}).");
         }
         return val.asInteger();
     }
@@ -165,7 +165,7 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
     {
         if (!val.IsLogical)
         {
-            throw new EvaluationException(position, $"Операція '{opName}' вимагає логічного значення, але отримано число ({val}).");
+            throw new EvaluationException("Помилка типів", position, $"Операція '{opName}' вимагає логічного значення, але отримано число ({val}).");
         }
         return val.asLogical();
     }

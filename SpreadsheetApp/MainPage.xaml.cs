@@ -16,6 +16,9 @@ public partial class MainPage : ContentPage
     private readonly List<List<Entry>> cellEntries = new();
 
     private string selectedAddress = "A1";
+    private int selectedRow = 1;
+    private int selectedColumn = 1;
+    private string? currentFilePath;
     private bool isUpdatingUi;
     private bool hasUnsavedChanges;
 
@@ -23,34 +26,40 @@ public partial class MainPage : ContentPage
     {
         InitializeComponent();
         controller = new SpreadsheetController(InitialRows, InitialColumns);
-        BuildGridStructure(controller.Table.RowCount, controller.Table.ColumnCount);
-        showTable(controller.Table, currentMode);
+        BuildGridStructure(controller.getTable().getRowCount(), controller.getTable().getColumnCount());
+        showTable(controller.getTable(), currentMode);
     }
 
-    public void editCell(string address, string expression)
+    public void editCell(string address, string text)
     {
-        string currentExpr = controller.Table.getCell(address)?.getExpression() ?? string.Empty;
-        string trimmedNew = expression?.Trim() ?? string.Empty;
+        Spreadsheet table = controller.getTable();
+        Cell? cell = table.getCell(address);
+        if (cell == null) return;
+
+        string currentExpr = cell.getExpression();
+        string trimmedNew = text?.Trim() ?? string.Empty;
 
         if (currentExpr == trimmedNew)
         {
             return;
         }
 
-        if (controller.setCellExpression(address, trimmedNew))
+        if (cell.setExpression(trimmedNew))
         {
             hasUnsavedChanges = true;
             if (currentMode == DisplayMode.VALUE)
             {
                 controller.calculate();
             }
-            showTable(controller.Table, currentMode);
+            showTable(table, currentMode);
         }
     }
 
     public void clearCellBtnClick(string address)
     {
-        controller.clearCell(address);
+        Spreadsheet table = controller.getTable();
+        Cell? cell = table.getCell(address);
+        cell?.clear();
         hasUnsavedChanges = true;
 
         if (selectedAddress == address)
@@ -64,7 +73,7 @@ public partial class MainPage : ContentPage
         {
             controller.calculate();
         }
-        showTable(controller.Table, currentMode);
+        showTable(table, currentMode);
         statusLabel.Text = $"Клітинку {address} очищено.";
     }
 
@@ -76,12 +85,12 @@ public partial class MainPage : ContentPage
         UpdateModeButtonText();
         showTable(table, currentMode);
 
-        Cell? firstErrorCell = table.Cells.FirstOrDefault(c => c.getError() != null);
+        Cell? firstErrorCell = table.getFilledCells().FirstOrDefault(c => c.getError() != null);
         if (firstErrorCell != null)
         {
             ExpressionError err = firstErrorCell.getError()!;
-            showErrorLocation(firstErrorCell.getAddress(), err.getPosition());
-            showMessage($"Помилка у клітинці {firstErrorCell.getAddress()} (символ {err.getPosition() + 1}):\n{err.getMessage()}");
+            showErrorLocation(firstErrorCell.getAddress(), err.getType(), err.getPosition());
+            showMessage($"Клітинка {firstErrorCell.getAddress()} — {err.getType()} (символ {err.getPosition() + 1}):\n{err.getMessage()}");
         }
         else
         {
@@ -103,23 +112,31 @@ public partial class MainPage : ContentPage
         }
 
         UpdateModeButtonText();
-        showTable(controller.Table, currentMode);
+        showTable(controller.getTable(), currentMode);
         statusLabel.Text = $"Режим: {(currentMode == DisplayMode.EXPRESSION ? "ВИРАЗ" : "ЗНАЧЕННЯ")} | Активна клітинка: {selectedAddress}";
     }
 
-    public void addRowBtnClick()
+    public void addRowBtnClick(int index)
     {
         CommitActiveInput();
-        controller.addRow();
-        AddRowToGridUi(controller.Table.RowCount);
+        Spreadsheet table = controller.getTable();
+        table.addRow(index);
+        AddRowToGridUi(table.getRowCount());
         hasUnsavedChanges = true;
-        showTable(controller.Table, currentMode);
+
+        if (currentMode == DisplayMode.VALUE)
+        {
+            controller.calculate();
+        }
+        showTable(table, currentMode);
+        statusLabel.Text = $"Вставлено рядок на позицію {index}. Усього рядків: {table.getRowCount()}.";
     }
 
-    public void deleteRowBtnClick()
+    public void deleteRowBtnClick(int index)
     {
         CommitActiveInput();
-        if (!controller.deleteRow())
+        Spreadsheet table = controller.getTable();
+        if (!table.deleteRow(index))
         {
             showMessage("Неможливо видалити останній рядок таблиці.");
             return;
@@ -128,32 +145,40 @@ public partial class MainPage : ContentPage
         RemoveLastRowFromGridUi();
         hasUnsavedChanges = true;
 
-        if (!controller.Table.IsValidAddress(selectedAddress))
-        {
-            selectedAddress = "A1";
-            activeCellLabel.Text = "A1";
-        }
+        selectedRow = Math.Clamp(selectedRow, 1, table.getRowCount());
+        selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
+        activeCellLabel.Text = selectedAddress;
 
         if (currentMode == DisplayMode.VALUE)
         {
             controller.calculate();
         }
-        showTable(controller.Table, currentMode);
+        showTable(table, currentMode);
+        statusLabel.Text = $"Видалено рядок {index}. Формули та клітинки зміщено.";
     }
 
-    public void addColumnBtnClick()
+    public void addColumnBtnClick(int index)
     {
         CommitActiveInput();
-        controller.addColumn();
-        AddColumnToGridUi(controller.Table.ColumnCount);
+        Spreadsheet table = controller.getTable();
+        table.addColumn(index);
+        AddColumnToGridUi(table.getColumnCount());
         hasUnsavedChanges = true;
-        showTable(controller.Table, currentMode);
+
+        if (currentMode == DisplayMode.VALUE)
+        {
+            controller.calculate();
+        }
+        showTable(table, currentMode);
+        statusLabel.Text = $"Вставлено стовпчик {Spreadsheet.ColumnIndexToName(index)}.";
     }
 
-    public void deleteColumnBtnClick()
+    public void deleteColumnBtnClick(int index)
     {
         CommitActiveInput();
-        if (!controller.deleteColumn())
+        Spreadsheet table = controller.getTable();
+        string deletedName = Spreadsheet.ColumnIndexToName(index);
+        if (!table.deleteColumn(index))
         {
             showMessage("Неможливо видалити останній стовпчик таблиці.");
             return;
@@ -162,27 +187,41 @@ public partial class MainPage : ContentPage
         RemoveLastColumnFromGridUi();
         hasUnsavedChanges = true;
 
-        if (!controller.Table.IsValidAddress(selectedAddress))
-        {
-            selectedAddress = "A1";
-            activeCellLabel.Text = "A1";
-        }
+        selectedColumn = Math.Clamp(selectedColumn, 1, table.getColumnCount());
+        selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
+        activeCellLabel.Text = selectedAddress;
 
         if (currentMode == DisplayMode.VALUE)
         {
             controller.calculate();
         }
-        showTable(controller.Table, currentMode);
+        showTable(table, currentMode);
+        statusLabel.Text = $"Видалено стовпчик {deletedName}. Формули та клітинки зміщено.";
     }
 
-    public void saveBtnClick(string filePath)
+    public async void saveBtnClick()
+    {
+        if (!string.IsNullOrWhiteSpace(currentFilePath))
+        {
+            saveAsBtnClick(currentFilePath);
+            return;
+        }
+
+        await PickAndSaveFileAsync();
+    }
+
+    public void saveAsBtnClick(string path)
     {
         try
         {
             CommitActiveInput();
-            controller.saveToFile(filePath);
-            hasUnsavedChanges = false;
-            showMessage($"Таблицю збережено у файл:\n{filePath}");
+            if (controller.saveTable(path))
+            {
+                currentFilePath = path;
+                hasUnsavedChanges = false;
+                statusLabel.Text = $"Збережено: {path}";
+                showMessage($"Таблицю збережено у файл:\n{path}");
+            }
         }
         catch (Exception ex)
         {
@@ -190,16 +229,20 @@ public partial class MainPage : ContentPage
         }
     }
 
-    public void openBtnClick(string filePath)
+    public void openBtnClick(string path)
     {
         try
         {
-            Spreadsheet loadedTable = controller.loadFromFile(filePath);
-            BuildGridStructure(loadedTable.RowCount, loadedTable.ColumnCount);
+            Spreadsheet loadedTable = controller.openTable(path);
+            currentFilePath = path;
+            BuildGridStructure(loadedTable.getRowCount(), loadedTable.getColumnCount());
+            selectedRow = 1;
+            selectedColumn = 1;
             selectedAddress = "A1";
             activeCellLabel.Text = "A1";
             hasUnsavedChanges = false;
             showTable(loadedTable, currentMode);
+            statusLabel.Text = $"Відкрито файл: {path}";
         }
         catch (Exception ex)
         {
@@ -218,8 +261,7 @@ public partial class MainPage : ContentPage
             "5. not x — логічне заперечення\n" +
             "6. x and y — логічне І\n" +
             "7. x or y — логічне АБО\n\n" +
-            "Операнди: цілі числа довільної довжини (BigInteger), константи true/false, посилання на клітинки (A1, B2...).\n" +
-            "Порожня клітинка має значення 0.";
+            "Клік по заголовку рядка (1, 2...) або стовпчика (A, B...) виділяє його для швидкої вставки чи видалення.";
 
         await DisplayAlert("Довідка", helpText, "OK");
     }
@@ -229,37 +271,27 @@ public partial class MainPage : ContentPage
         isUpdatingUi = true;
         try
         {
-            for (int r = 1; r <= table.RowCount; r++)
+            UpdateHeadersHighlight();
+
+            int rows = table.getRowCount();
+            int cols = table.getColumnCount();
+
+            for (int r = 1; r <= rows; r++)
             {
-                for (int c = 1; c <= table.ColumnCount; c++)
+                for (int c = 1; c <= cols; c++)
                 {
                     string address = Spreadsheet.FormatAddress(r, c);
                     Entry entry = cellEntries[r - 1][c - 1];
                     Cell? cell = table.getCell(address);
 
-                    if (cell == null || string.IsNullOrWhiteSpace(cell.getExpression()))
+                    if (cell == null) continue;
+
+                    if (!entry.IsFocused)
                     {
-                        if (!entry.IsFocused)
-                        {
-                            entry.Text = string.Empty;
-                        }
-                        entry.BackgroundColor = address == selectedAddress ? Colors.LightCyan : Colors.White;
-                        continue;
+                        entry.Text = cell.getDisplayText(mode);
                     }
 
-                    ExpressionError? error = cell.getError();
-                    if (mode == DisplayMode.EXPRESSION || entry.IsFocused)
-                    {
-                        entry.Text = cell.getExpression();
-                    }
-                    else
-                    {
-                        entry.Text = error != null
-                            ? $"#ПОМИЛКА (поз. {error.getPosition() + 1})"
-                            : (cell.getValue()?.ToString() ?? string.Empty);
-                    }
-
-                    if (error != null)
+                    if (cell.getError() != null)
                     {
                         entry.BackgroundColor = address == selectedAddress ? Colors.LightCoral : Colors.MistyRose;
                     }
@@ -282,13 +314,18 @@ public partial class MainPage : ContentPage
         }
     }
 
-    public void showErrorLocation(string address, int position)
+    public void showErrorLocation(string address, string type, int position)
     {
+        if (Spreadsheet.TryParseAddress(address, out int r, out int c))
+        {
+            selectedRow = r;
+            selectedColumn = c;
+        }
         selectedAddress = address;
         activeCellLabel.Text = address;
-        showTable(controller.Table, currentMode);
+        showTable(controller.getTable(), currentMode);
 
-        Cell? cell = controller.Table.getCell(address);
+        Cell? cell = controller.getTable().getCell(address);
         string expr = cell?.getExpression() ?? string.Empty;
 
         isUpdatingUi = true;
@@ -302,13 +339,13 @@ public partial class MainPage : ContentPage
 
         if (cell?.getError() != null)
         {
-            statusLabel.Text = $"Помилка у {address} (символ {position + 1}): {cell.getError()!.getMessage()}";
+            statusLabel.Text = $"{address} — {type} (символ {position + 1}): {cell.getError()!.getMessage()}";
         }
     }
 
-    public async void showMessage(string text)
+    public async void showMessage(string message)
     {
-        await DisplayAlert("Повідомлення", text, "OK");
+        await DisplayAlert("Повідомлення", message, "OK");
     }
 
     public async void close()
@@ -343,8 +380,8 @@ public partial class MainPage : ContentPage
 
         for (int c = 1; c <= cols; c++)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
-            Label colHeader = CreateHeaderLabel(Spreadsheet.ColumnIndexToName(c));
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(115) });
+            Label colHeader = CreateColumnHeaderLabel(c);
             columnHeaders.Add(colHeader);
             grid.Add(colHeader, c, 0);
         }
@@ -359,7 +396,7 @@ public partial class MainPage : ContentPage
     {
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        Label rowHeader = CreateHeaderLabel(rowNumber.ToString());
+        Label rowHeader = CreateRowHeaderLabel(rowNumber);
         rowHeaders.Add(rowHeader);
         grid.Add(rowHeader, 0, rowNumber);
 
@@ -396,9 +433,9 @@ public partial class MainPage : ContentPage
 
     private void AddColumnToGridUi(int colNumber)
     {
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(115) });
 
-        Label colHeader = CreateHeaderLabel(Spreadsheet.ColumnIndexToName(colNumber));
+        Label colHeader = CreateColumnHeaderLabel(colNumber);
         columnHeaders.Add(colHeader);
         grid.Add(colHeader, colNumber, 0);
 
@@ -429,15 +466,69 @@ public partial class MainPage : ContentPage
         grid.ColumnDefinitions.RemoveAt(grid.ColumnDefinitions.Count - 1);
     }
 
-    private static Label CreateHeaderLabel(string text)
+    private Label CreateRowHeaderLabel(int rowNumber)
     {
-        return new Label
+        var label = new Label
         {
-            Text = text,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center,
-            FontAttributes = FontAttributes.Bold
+            Text = rowNumber.ToString(),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center,
+            FontAttributes = FontAttributes.Bold,
+            Padding = new Thickness(4)
         };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) =>
+        {
+            selectedRow = rowNumber;
+            selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
+            activeCellLabel.Text = selectedAddress;
+            UpdateHeadersHighlight();
+            statusLabel.Text = $"Вибрано рядок {rowNumber}.";
+        };
+        label.GestureRecognizers.Add(tap);
+        return label;
+    }
+
+    private Label CreateColumnHeaderLabel(int colNumber)
+    {
+        string colName = Spreadsheet.ColumnIndexToName(colNumber);
+        var label = new Label
+        {
+            Text = colName,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center,
+            FontAttributes = FontAttributes.Bold,
+            Padding = new Thickness(4)
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) =>
+        {
+            selectedColumn = colNumber;
+            selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
+            activeCellLabel.Text = selectedAddress;
+            UpdateHeadersHighlight();
+            statusLabel.Text = $"Вибрано стовпчик {colName}.";
+        };
+        label.GestureRecognizers.Add(tap);
+        return label;
+    }
+
+    private void UpdateHeadersHighlight()
+    {
+        for (int r = 0; r < rowHeaders.Count; r++)
+        {
+            rowHeaders[r].BackgroundColor = (r + 1 == selectedRow) ? Colors.LightSteelBlue : Colors.Transparent;
+        }
+        for (int c = 0; c < columnHeaders.Count; c++)
+        {
+            columnHeaders[c].BackgroundColor = (c + 1 == selectedColumn) ? Colors.LightSteelBlue : Colors.Transparent;
+        }
     }
 
     private Entry CreateCellEntry(int row, int col)
@@ -465,11 +556,17 @@ public partial class MainPage : ContentPage
         selectedAddress = address;
         activeCellLabel.Text = address;
 
-        // Оновлюємо підсвічування попередньої та поточної клітинки одразу при кліку
+        if (Spreadsheet.TryParseAddress(address, out int r, out int c))
+        {
+            selectedRow = r;
+            selectedColumn = c;
+        }
+
+        UpdateHeadersHighlight();
         UpdateSingleCellBackground(previousAddress);
         UpdateSingleCellBackground(selectedAddress);
 
-        Cell? cell = controller.Table.getCell(address);
+        Cell? cell = controller.getTable().getCell(address);
         string rawExpr = cell?.getExpression() ?? string.Empty;
 
         isUpdatingUi = true;
@@ -480,11 +577,11 @@ public partial class MainPage : ContentPage
         if (cell?.getError() != null)
         {
             ExpressionError err = cell.getError()!;
-            statusLabel.Text = $"Клітинка {address} — Помилка (символ {err.getPosition() + 1}): {err.getMessage()}";
+            statusLabel.Text = $"{address} — {err.getType()} (символ {err.getPosition() + 1}): {err.getMessage()}";
         }
         else
         {
-            statusLabel.Text = $"Активна клітинка: {address} | Режим: {(currentMode == DisplayMode.EXPRESSION ? "ВИРАЗ" : "ЗНАЧЕННЯ")}";
+            statusLabel.Text = $"Активна клітинка: {address} (рядок {selectedRow}, стовпчик {Spreadsheet.ColumnIndexToName(selectedColumn)})";
         }
     }
 
@@ -494,7 +591,7 @@ public partial class MainPage : ContentPage
         if (r < 1 || r > cellEntries.Count || c < 1 || c > columnHeaders.Count) return;
 
         Entry entry = cellEntries[r - 1][c - 1];
-        Cell? cell = controller.Table.getCell(address);
+        Cell? cell = controller.getTable().getCell(address);
         if (cell?.getError() != null)
         {
             entry.BackgroundColor = address == selectedAddress ? Colors.LightCoral : Colors.MistyRose;
@@ -509,14 +606,14 @@ public partial class MainPage : ContentPage
     {
         if (sender is not Entry entry || isUpdatingUi) return;
         editCell(entry.AutomationId, entry.Text ?? string.Empty);
-        showTable(controller.Table, currentMode);
+        showTable(controller.getTable(), currentMode);
     }
 
     private void OnCellCompleted(object? sender, EventArgs e)
     {
         if (sender is not Entry entry || isUpdatingUi) return;
         editCell(entry.AutomationId, entry.Text ?? string.Empty);
-        showTable(controller.Table, currentMode);
+        showTable(controller.getTable(), currentMode);
     }
 
     private void OnFormulaBarCompleted(object? sender, EventArgs e)
@@ -539,12 +636,124 @@ public partial class MainPage : ContentPage
     private void OnClearCellClicked(object? sender, EventArgs e) => clearCellBtnClick(selectedAddress);
     private void OnCalculateClicked(object? sender, EventArgs e) => calculateBtnClick();
     private void OnSwitchModeClicked(object? sender, EventArgs e) => switchModeBtnClick();
-    private void OnAddRowClicked(object? sender, EventArgs e) => addRowBtnClick();
-    private void OnDeleteRowClicked(object? sender, EventArgs e) => deleteRowBtnClick();
-    private void OnAddColumnClicked(object? sender, EventArgs e) => addColumnBtnClick();
-    private void OnDeleteColumnClicked(object? sender, EventArgs e) => deleteColumnBtnClick();
     private void OnHelpClicked(object? sender, EventArgs e) => helpBtnClick();
     private void OnExitClicked(object? sender, EventArgs e) => close();
+    private void OnSaveClicked(object? sender, EventArgs e) => saveBtnClick();
+
+    private async void OnSaveAsClicked(object? sender, EventArgs e)
+    {
+        await PickAndSaveFileAsync();
+    }
+
+    private async void OnAddRowClicked(object? sender, EventArgs e)
+    {
+        int totalRows = controller.getTable().getRowCount();
+        var options = new List<string> { $"Перед вибраним рядком ({selectedRow})", $"У кінець таблиці ({totalRows + 1})" };
+        for (int r = 1; r <= totalRows; r++)
+        {
+            options.Add($"Перед рядком {r}");
+        }
+
+        string? choice = await DisplayActionSheet("Куди вставити новий рядок?", "Скасувати", null, options.ToArray());
+        if (string.IsNullOrEmpty(choice) || choice == "Скасувати") return;
+
+        if (choice.StartsWith("Перед вибраним"))
+        {
+            addRowBtnClick(selectedRow);
+        }
+        else if (choice.StartsWith("У кінець"))
+        {
+            addRowBtnClick(totalRows + 1);
+        }
+        else if (int.TryParse(choice.Replace("Перед рядком ", ""), out int targetRow))
+        {
+            addRowBtnClick(targetRow);
+        }
+    }
+
+    private async void OnDeleteRowClicked(object? sender, EventArgs e)
+    {
+        int totalRows = controller.getTable().getRowCount();
+        var options = new List<string> { $"Вибраний рядок ({selectedRow})" };
+        for (int r = 1; r <= totalRows; r++)
+        {
+            options.Add($"Рядок {r}");
+        }
+
+        string? choice = await DisplayActionSheet("Який рядок видалити?", "Скасувати", null, options.ToArray());
+        if (string.IsNullOrEmpty(choice) || choice == "Скасувати") return;
+
+        if (choice.StartsWith("Вибраний рядок"))
+        {
+            deleteRowBtnClick(selectedRow);
+        }
+        else if (int.TryParse(choice.Replace("Рядок ", ""), out int targetRow))
+        {
+            deleteRowBtnClick(targetRow);
+        }
+    }
+
+    private async void OnAddColumnClicked(object? sender, EventArgs e)
+    {
+        int totalCols = controller.getTable().getColumnCount();
+        string selColName = Spreadsheet.ColumnIndexToName(selectedColumn);
+        var options = new List<string>
+        {
+            $"Перед вибраним стовпчиком ({selColName})",
+            $"У кінець таблиці ({Spreadsheet.ColumnIndexToName(totalCols + 1)})"
+        };
+        for (int c = 1; c <= totalCols; c++)
+        {
+            options.Add($"Перед стовпчиком {Spreadsheet.ColumnIndexToName(c)}");
+        }
+
+        string? choice = await DisplayActionSheet("Куди вставити новий стовпчик?", "Скасувати", null, options.ToArray());
+        if (string.IsNullOrEmpty(choice) || choice == "Скасувати") return;
+
+        if (choice.StartsWith("Перед вибраним"))
+        {
+            addColumnBtnClick(selectedColumn);
+        }
+        else if (choice.StartsWith("У кінець"))
+        {
+            addColumnBtnClick(totalCols + 1);
+        }
+        else
+        {
+            string colName = choice.Replace("Перед стовпчиком ", "").Trim();
+            if (Spreadsheet.TryParseAddress(colName + "1", out _, out int targetCol))
+            {
+                addColumnBtnClick(targetCol);
+            }
+        }
+    }
+
+    private async void OnDeleteColumnClicked(object? sender, EventArgs e)
+    {
+        int totalCols = controller.getTable().getColumnCount();
+        string selColName = Spreadsheet.ColumnIndexToName(selectedColumn);
+        var options = new List<string> { $"Вибраний стовпчик ({selColName})" };
+        for (int c = 1; c <= totalCols; c++)
+        {
+            options.Add($"Стовпчик {Spreadsheet.ColumnIndexToName(c)}");
+        }
+
+        string? choice = await DisplayActionSheet("Який стовпчик видалити?", "Скасувати", null, options.ToArray());
+        if (string.IsNullOrEmpty(choice) || choice == "Скасувати") return;
+
+        if (choice.StartsWith("Вибраний стовпчик"))
+        {
+            deleteColumnBtnClick(selectedColumn);
+        }
+        else
+        {
+            string colName = choice.Replace("Стовпчик ", "").Trim();
+            if (Spreadsheet.TryParseAddress(colName + "1", out _, out int targetCol))
+            {
+                deleteColumnBtnClick(targetCol);
+            }
+        }
+    }
 
     private async void OnAboutClicked(object? sender, EventArgs e)
     {
@@ -568,12 +777,12 @@ public partial class MainPage : ContentPage
 
         if (!confirm) return;
 
-        controller.Table.clearAll();
+        controller.getTable().clearAll();
         hasUnsavedChanges = true;
-        showTable(controller.Table, currentMode);
+        showTable(controller.getTable(), currentMode);
     }
 
-    private async void OnSaveClicked(object? sender, EventArgs e)
+    private async Task PickAndSaveFileAsync()
     {
 #if WINDOWS
         var savePicker = new Windows.Storage.Pickers.FileSavePicker
@@ -591,11 +800,11 @@ public partial class MainPage : ContentPage
         Windows.Storage.StorageFile? file = await savePicker.PickSaveFileAsync();
         if (file != null)
         {
-            saveBtnClick(file.Path);
+            saveAsBtnClick(file.Path);
         }
 #else
         string defaultPath = Path.Combine(FileSystem.Current.AppDataDirectory, "table_variant67.json");
-        saveBtnClick(defaultPath);
+        saveAsBtnClick(defaultPath);
 #endif
     }
 

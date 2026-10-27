@@ -4,7 +4,7 @@ namespace SpreadsheetEngine;
 
 public class Cell
 {
-    private readonly string address;
+    private string address;
     private string expression = string.Empty;
     private Value? value;
     private ExpressionError? error;
@@ -15,21 +15,25 @@ public class Cell
     }
 
     public string getAddress() => address;
+    internal void setAddress(string newAddress) => address = newAddress.ToUpperInvariant();
+
     public string getExpression() => expression;
 
-    public void setExpression(string expression)
+    public bool setExpression(string text)
     {
-        this.expression = expression?.Trim() ?? string.Empty;
-        this.error = null;
+        expression = text?.Trim() ?? string.Empty;
+        error = null;
 
-        if (IsPlainUnsignedInteger(this.expression) && BigInteger.TryParse(this.expression, out BigInteger num))
+        if (IsPlainUnsignedInteger(expression) && BigInteger.TryParse(expression, out BigInteger num))
         {
-            this.value = new Value(num);
+            value = new Value(num);
         }
         else
         {
-            this.value = null;
+            value = null;
         }
+
+        return true;
     }
 
     public Value? getValue() => value;
@@ -52,6 +56,26 @@ public class Cell
         expression = string.Empty;
         value = null;
         error = null;
+    }
+
+    public string getDisplayText(DisplayMode mode)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return string.Empty;
+        }
+
+        if (mode == DisplayMode.EXPRESSION)
+        {
+            return expression;
+        }
+
+        if (error != null)
+        {
+            return $"#ПОМИЛКА [{error.getType()}, поз. {error.getPosition() + 1}]";
+        }
+
+        return value?.ToString() ?? string.Empty;
     }
 
     private static bool IsPlainUnsignedInteger(string text)

@@ -16,31 +16,13 @@ public class SpreadsheetController
         Visited
     }
 
-    public SpreadsheetController(int rows = 10, int cols = 10)
+    public SpreadsheetController(int rows = 10, int cols = 8)
     {
         table = new Spreadsheet(rows, cols);
         storage = new SpreadsheetStorage();
     }
 
-    public Spreadsheet Table => table;
-
-    public bool setCellExpression(string address, string expression)
-    {
-        if (!table.IsValidAddress(address))
-        {
-            return false;
-        }
-        table.setExpression(address, expression);
-        return true;
-    }
-
-    public void clearCell(string address)
-    {
-        if (table.IsValidAddress(address))
-        {
-            table.setExpression(address, string.Empty);
-        }
-    }
+    public Spreadsheet getTable() => table;
 
     public Spreadsheet calculate()
     {
@@ -48,7 +30,6 @@ public class SpreadsheetController
         var parsedTrees = new Dictionary<string, IParseTree>();
         var states = new Dictionary<string, VisitState>();
 
-        // Етап 1: Синтаксична перевірка всіх формул
         foreach (Cell cell in formulaCells)
         {
             cell.setValue(null);
@@ -67,7 +48,6 @@ public class SpreadsheetController
             }
         }
 
-        // Етап 2: Топологічний обхід (DFS) з виявленням циклів та обчисленням значень
         foreach (Cell cell in formulaCells)
         {
             string addr = cell.getAddress();
@@ -80,16 +60,11 @@ public class SpreadsheetController
         return table;
     }
 
-    public void addRow() => table.addRow();
-    public bool deleteRow() => table.deleteRow();
-    public void addColumn() => table.addColumn();
-    public bool deleteColumn() => table.deleteColumn();
+    public bool saveTable(string path) => storage.save(table, path);
 
-    public void saveToFile(string filePath) => storage.save(table, filePath);
-
-    public Spreadsheet loadFromFile(string filePath)
+    public Spreadsheet openTable(string path)
     {
-        table = storage.load(filePath);
+        table = storage.load(path);
         return calculate();
     }
 
@@ -138,7 +113,7 @@ public class SpreadsheetController
         {
             if (!table.IsValidAddress(targetAddr))
             {
-                cell.setError(new ExpressionError(pos, $"Посилання на неіснуючу клітинку '{targetAddr}' (поза межами таблиці)."));
+                cell.setError(new ExpressionError("Помилка посилання", pos, $"Посилання на неіснуючу клітинку '{targetAddr}' (поза межами таблиці)."));
                 states[addr] = VisitState.Visited;
                 return;
             }
@@ -147,7 +122,7 @@ public class SpreadsheetController
             {
                 if (targetState == VisitState.Visiting)
                 {
-                    cell.setError(new ExpressionError(pos, $"Циклічне посилання на клітинку '{targetAddr}'."));
+                    cell.setError(new ExpressionError("Циклічне посилання", pos, $"Циклічне посилання на клітинку '{targetAddr}'."));
                     states[addr] = VisitState.Visited;
                     return;
                 }
@@ -165,14 +140,14 @@ public class SpreadsheetController
             Cell? resolvedTarget = table.getCell(targetAddr);
             if (resolvedTarget != null && resolvedTarget.getError() != null)
             {
-                string targetErrMsg = resolvedTarget.getError()!.getMessage();
-                if (targetErrMsg.StartsWith("Циклічне посилання"))
+                ExpressionError targetErr = resolvedTarget.getError()!;
+                if (targetErr.getType() == "Циклічне посилання")
                 {
-                    cell.setError(new ExpressionError(pos, $"Циклічне посилання через клітинку '{targetAddr}'."));
+                    cell.setError(new ExpressionError("Циклічне посилання", pos, $"Циклічне посилання через клітинку '{targetAddr}'."));
                 }
                 else
                 {
-                    cell.setError(new ExpressionError(pos, $"Посилання на клітинку '{targetAddr}', яка містить помилку."));
+                    cell.setError(new ExpressionError("Помилка посилання", pos, $"Посилання на клітинку '{targetAddr}', яка містить помилку."));
                 }
                 states[addr] = VisitState.Visited;
                 return;

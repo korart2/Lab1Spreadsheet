@@ -6,17 +6,18 @@
 
     <ContentPage.MenuBarItems>
         <MenuBarItem Text="Файл">
-            <MenuFlyoutItem Text="Відкрити" Clicked="OnOpenClicked" />
+            <MenuFlyoutItem Text="Відкрити..." Clicked="OnOpenClicked" />
             <MenuFlyoutItem Text="Зберегти" Clicked="OnSaveClicked" />
+            <MenuFlyoutItem Text="Зберегти як..." Clicked="OnSaveAsClicked" />
             <MenuFlyoutItem Text="Очистити таблицю" Clicked="OnClearAllClicked" />
             <MenuFlyoutItem Text="Вихід" Clicked="OnExitClicked" />
         </MenuBarItem>
 
         <MenuBarItem Text="Таблиця">
-            <MenuFlyoutItem Text="Додати рядок" Clicked="OnAddRowClicked" />
-            <MenuFlyoutItem Text="Видалити рядок" Clicked="OnDeleteRowClicked" />
-            <MenuFlyoutItem Text="Додати стовпчик" Clicked="OnAddColumnClicked" />
-            <MenuFlyoutItem Text="Видалити стовпчик" Clicked="OnDeleteColumnClicked" />
+            <MenuFlyoutItem Text="Додати рядок..." Clicked="OnAddRowClicked" />
+            <MenuFlyoutItem Text="Видалити рядок..." Clicked="OnDeleteRowClicked" />
+            <MenuFlyoutItem Text="Додати стовпчик..." Clicked="OnAddColumnClicked" />
+            <MenuFlyoutItem Text="Видалити стовпчик..." Clicked="OnDeleteColumnClicked" />
             <MenuFlyoutItem Text="Очистити клітинку" Clicked="OnClearCellClicked" />
         </MenuBarItem>
 
@@ -33,7 +34,6 @@
 
     <Grid RowDefinitions="Auto, Auto, *, Auto" Padding="8" RowSpacing="6">
 
-        <!-- Панель кнопок (як у посібнику MAUI, стор. 244) -->
         <ScrollView Grid.Row="0" Orientation="Horizontal">
             <StackLayout Orientation="Horizontal" Spacing="6">
                 <Button Text="Порахувати" Clicked="OnCalculateClicked" />
@@ -43,6 +43,7 @@
                 <Button Text="Додати стовпчик" Clicked="OnAddColumnClicked" />
                 <Button Text="Видалити стовпчик" Clicked="OnDeleteColumnClicked" />
                 <Button Text="Зберегти" Clicked="OnSaveClicked" />
+                <Button Text="Зберегти як..." Clicked="OnSaveAsClicked" />
                 <Button Text="Відкрити" Clicked="OnOpenClicked" />
                 <Button Text="Довідка" Clicked="OnHelpClicked" />
                 <Button Text="Про програму" Clicked="OnAboutClicked" />
@@ -50,7 +51,6 @@
             </StackLayout>
         </ScrollView>
 
-        <!-- Рядок введення виразу -->
         <Grid Grid.Row="1" ColumnDefinitions="60, *, Auto, Auto" ColumnSpacing="6">
             <Label x:Name="activeCellLabel"
                    Grid.Column="0"
@@ -69,12 +69,10 @@
             <Button Grid.Column="3" Text="Очистити клітинку" Clicked="OnClearCellClicked" />
         </Grid>
 
-        <!-- Сітка таблиці -->
         <ScrollView Grid.Row="2" Orientation="Both">
             <Grid x:Name="grid" RowSpacing="2" ColumnSpacing="2" />
         </ScrollView>
 
-        <!-- Рядок стану -->
         <Label x:Name="statusLabel"
                Grid.Row="3"
                Text="Активна клітинка: A1 | Режим: ВИРАЗ" />
