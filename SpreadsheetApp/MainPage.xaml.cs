@@ -74,7 +74,6 @@ public partial class MainPage : ContentPage
             controller.calculate();
         }
         showTable(table, currentMode);
-        statusLabel.Text = $"Клітинку {address} очищено.";
     }
 
     public void calculateBtnClick()
@@ -91,10 +90,6 @@ public partial class MainPage : ContentPage
             ExpressionError err = firstErrorCell.getError()!;
             showErrorLocation(firstErrorCell.getAddress(), err.getType(), err.getPosition());
             showMessage($"Клітинка {firstErrorCell.getAddress()} — {err.getType()} (символ {err.getPosition() + 1}):\n{err.getMessage()}");
-        }
-        else
-        {
-            statusLabel.Text = "Обчислення виконано успішно.";
         }
     }
 
@@ -113,7 +108,6 @@ public partial class MainPage : ContentPage
 
         UpdateModeButtonText();
         showTable(controller.getTable(), currentMode);
-        statusLabel.Text = $"Режим: {(currentMode == DisplayMode.EXPRESSION ? "ВИРАЗ" : "ЗНАЧЕННЯ")} | Активна клітинка: {selectedAddress}";
     }
 
     public void addRowBtnClick(int index)
@@ -129,7 +123,6 @@ public partial class MainPage : ContentPage
             controller.calculate();
         }
         showTable(table, currentMode);
-        statusLabel.Text = $"Вставлено рядок на позицію {index}. Усього рядків: {table.getRowCount()}.";
     }
 
     public void deleteRowBtnClick(int index)
@@ -154,7 +147,6 @@ public partial class MainPage : ContentPage
             controller.calculate();
         }
         showTable(table, currentMode);
-        statusLabel.Text = $"Видалено рядок {index}. Формули та клітинки зміщено.";
     }
 
     public void addColumnBtnClick(int index)
@@ -170,14 +162,12 @@ public partial class MainPage : ContentPage
             controller.calculate();
         }
         showTable(table, currentMode);
-        statusLabel.Text = $"Вставлено стовпчик {Spreadsheet.ColumnIndexToName(index)}.";
     }
 
     public void deleteColumnBtnClick(int index)
     {
         CommitActiveInput();
         Spreadsheet table = controller.getTable();
-        string deletedName = Spreadsheet.ColumnIndexToName(index);
         if (!table.deleteColumn(index))
         {
             showMessage("Неможливо видалити останній стовпчик таблиці.");
@@ -196,7 +186,6 @@ public partial class MainPage : ContentPage
             controller.calculate();
         }
         showTable(table, currentMode);
-        statusLabel.Text = $"Видалено стовпчик {deletedName}. Формули та клітинки зміщено.";
     }
 
     public async void saveBtnClick()
@@ -219,7 +208,7 @@ public partial class MainPage : ContentPage
             {
                 currentFilePath = path;
                 hasUnsavedChanges = false;
-                statusLabel.Text = $"Збережено: {path}";
+                UpdateStatusBarForCell(selectedAddress);
                 showMessage($"Таблицю збережено у файл:\n{path}");
             }
         }
@@ -242,7 +231,6 @@ public partial class MainPage : ContentPage
             activeCellLabel.Text = "A1";
             hasUnsavedChanges = false;
             showTable(loadedTable, currentMode);
-            statusLabel.Text = $"Відкрито файл: {path}";
         }
         catch (Exception ex)
         {
@@ -257,7 +245,7 @@ public partial class MainPage : ContentPage
             "1. ( ) — круглі дужки\n" +
             "2. inc(x), dec(x) — інкремент та декремент\n" +
             "3. +x, -x — унарні плюс та мінус\n" +
-            "4. <=, >=, <> — порівняння цілих чисел\n" +
+            "4. <=, >=, <> — порівняння цілих чисел та логічних значень (для bool <= та >= частково визначені при рівності)\n" +
             "5. not x — логічне заперечення\n" +
             "6. x and y — логічне І\n" +
             "7. x or y — логічне АБО\n\n" +
@@ -291,13 +279,18 @@ public partial class MainPage : ContentPage
                         entry.Text = cell.getDisplayText(mode);
                     }
 
-                    if (cell.getError() != null)
+                    ExpressionError? err = cell.getError();
+                    if (err != null)
                     {
                         entry.BackgroundColor = address == selectedAddress ? Colors.LightCoral : Colors.MistyRose;
+                        ToolTipProperties.SetText(entry, $"ПОМИЛКА [{err.getType()}, поз. {err.getPosition() + 1}]: {err.getMessage()}");
                     }
                     else
                     {
                         entry.BackgroundColor = address == selectedAddress ? Colors.LightCyan : Colors.White;
+                        string rawExpr = cell.getExpression();
+                        string valStr = cell.getValue()?.ToString() ?? "0";
+                        ToolTipProperties.SetText(entry, string.IsNullOrEmpty(rawExpr) ? string.Empty : $"Вираз: {rawExpr} | Значення: {valStr}");
                     }
                 }
             }
@@ -307,6 +300,8 @@ public partial class MainPage : ContentPage
             {
                 textInput.Text = activeCell?.getExpression() ?? string.Empty;
             }
+
+            UpdateStatusBarForCell(selectedAddress);
         }
         finally
         {
@@ -337,10 +332,7 @@ public partial class MainPage : ContentPage
         textInput.CursorPosition = safePos;
         textInput.SelectionLength = safePos < expr.Length ? 1 : 0;
 
-        if (cell?.getError() != null)
-        {
-            statusLabel.Text = $"{address} — {type} (символ {position + 1}): {cell.getError()!.getMessage()}";
-        }
+        UpdateStatusBarForCell(address);
     }
 
     public async void showMessage(string message)
@@ -362,6 +354,38 @@ public partial class MainPage : ContentPage
         }
 
         Application.Current?.Quit();
+    }
+
+    private void UpdateStatusBarForCell(string address)
+    {
+        Cell? cell = controller.getTable().getCell(address);
+        string modeName = currentMode == DisplayMode.EXPRESSION ? "ВИРАЗ" : "ЗНАЧЕННЯ";
+
+        if (cell?.getError() != null)
+        {
+            ExpressionError err = cell.getError()!;
+            statusBorder.BackgroundColor = Colors.MistyRose;
+            statusBorder.Stroke = Colors.Crimson;
+            statusLabel.TextColor = Colors.DarkRed;
+            statusLabel.Text = $"ПОМИЛКА у клітинці {address} [{err.getType()}, символ {err.getPosition() + 1}]: {err.getMessage()}";
+            return;
+        }
+
+        statusBorder.BackgroundColor = Color.FromArgb("#E2E8F0");
+        statusBorder.Stroke = Color.FromArgb("#64748B");
+        statusLabel.TextColor = Color.FromArgb("#0F172A");
+
+        string expr = cell?.getExpression() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(expr))
+        {
+            statusLabel.Text = $"Клітинка: {address} (порожня, значення за замовчуванням: 0)  |  Режим: {modeName}";
+        }
+        else
+        {
+            Value? val = cell?.getValue();
+            string valText = val != null ? $"{val} ({(val.IsLogical ? "Логічне" : "Ціле число")})" : "(ще не обчислено)";
+            statusLabel.Text = $"Клітинка: {address}  |  Вираз: {expr}  |  Значення: {valText}  |  Режим: {modeName}";
+        }
     }
 
     private void BuildGridStructure(int rows, int cols)
@@ -486,7 +510,7 @@ public partial class MainPage : ContentPage
             selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
             activeCellLabel.Text = selectedAddress;
             UpdateHeadersHighlight();
-            statusLabel.Text = $"Вибрано рядок {rowNumber}.";
+            UpdateStatusBarForCell(selectedAddress);
         };
         label.GestureRecognizers.Add(tap);
         return label;
@@ -513,7 +537,7 @@ public partial class MainPage : ContentPage
             selectedAddress = Spreadsheet.FormatAddress(selectedRow, selectedColumn);
             activeCellLabel.Text = selectedAddress;
             UpdateHeadersHighlight();
-            statusLabel.Text = $"Вибрано стовпчик {colName}.";
+            UpdateStatusBarForCell(selectedAddress);
         };
         label.GestureRecognizers.Add(tap);
         return label;
@@ -574,15 +598,7 @@ public partial class MainPage : ContentPage
         textInput.Text = rawExpr;
         isUpdatingUi = false;
 
-        if (cell?.getError() != null)
-        {
-            ExpressionError err = cell.getError()!;
-            statusLabel.Text = $"{address} — {err.getType()} (символ {err.getPosition() + 1}): {err.getMessage()}";
-        }
-        else
-        {
-            statusLabel.Text = $"Активна клітинка: {address} (рядок {selectedRow}, стовпчик {Spreadsheet.ColumnIndexToName(selectedColumn)})";
-        }
+        UpdateStatusBarForCell(address);
     }
 
     private void UpdateSingleCellBackground(string address)

@@ -32,10 +32,11 @@
         </MenuBarItem>
     </ContentPage.MenuBarItems>
 
-    <Grid RowDefinitions="Auto, Auto, *, Auto" Padding="8" RowSpacing="6">
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Padding="8" RowSpacing="8">
 
-        <ScrollView Grid.Row="0" Orientation="Horizontal">
-            <StackLayout Orientation="Horizontal" Spacing="6">
+        <!-- ФІКС №1: Додано Padding="0,2,0,16", щоб горизонтальний повзунок був під кнопками і не накладався на них -->
+        <ScrollView Grid.Row="0" Orientation="Horizontal" HorizontalScrollBarVisibility="Always">
+            <StackLayout Orientation="Horizontal" Spacing="6" Padding="0,2,0,16">
                 <Button Text="Порахувати" Clicked="OnCalculateClicked" />
                 <Button x:Name="modeButton" Text="Режим: ВИРАЗ" Clicked="OnSwitchModeClicked" />
                 <Button Text="Додати рядок" Clicked="OnAddRowClicked" />
@@ -73,8 +74,18 @@
             <Grid x:Name="grid" RowSpacing="2" ColumnSpacing="2" />
         </ScrollView>
 
-        <Label x:Name="statusLabel"
-               Grid.Row="3"
-               Text="Активна клітинка: A1 | Режим: ВИРАЗ" />
+        <!-- ФІКС №2: Помітна інформаційна панель стану внизу (підсвічується червоним при помилці) -->
+        <Border x:Name="statusBorder"
+                Grid.Row="3"
+                Stroke="#94A3B8"
+                StrokeThickness="2"
+                BackgroundColor="#E2E8F0"
+                Padding="12,8">
+            <Label x:Name="statusLabel"
+                   Text="Активна клітинка: A1 | Режим: ВИРАЗ"
+                   FontSize="15"
+                   FontAttributes="Bold"
+                   TextColor="#0F172A" />
+        </Border>
     </Grid>
 </ContentPage>

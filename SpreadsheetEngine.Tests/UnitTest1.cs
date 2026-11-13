@@ -32,6 +32,9 @@ public class Variant67Tests
     }
 
     [Theory]
+    [InlineData("true <> false", true)]
+    [InlineData("true <= true", true)]
+    [InlineData("false >= false", true)]
     [InlineData("inc(5) <= 6", true)]
     [InlineData("dec 10 >= 10", false)]
     [InlineData("-5 <= +3", true)]
@@ -123,6 +126,7 @@ public class Variant67Tests
     }
 
     [Theory]
+    [InlineData("true <= false", "Помилка типів")]
     [InlineData("5 and 3", "Помилка типів")]
     [InlineData("not A1", "Помилка типів")]
     [InlineData("inc(true)", "Помилка типів")]

@@ -72,6 +72,41 @@ public class ExpressionVisitor : ExpressionBaseVisitor<Value>
         int opCol = context.operatorToken.Column;
         string opText = context.operatorToken.Text;
 
+        // Если оба значения логические (true / false):
+        if (leftVal.IsLogical && rightVal.IsLogical)
+        {
+            bool leftBool = leftVal.asLogical();
+            bool rightBool = rightVal.asLogical();
+
+            if (context.operatorToken.Type == ExpressionLexer.NE)
+            {
+                return new Value(leftBool != rightBool);
+            }
+
+            if (context.operatorToken.Type == ExpressionLexer.LE || context.operatorToken.Type == ExpressionLexer.GE)
+            {
+                if (leftBool == rightBool)
+                {
+                    return new Value(true);
+                }
+
+                throw new EvaluationException(
+                    "Помилка типів",
+                    opCol,
+                    $"Операція '{opText}' є частково визначеною для логічних значень і не визначена для різних значень ({leftBool} та {rightBool}).");
+            }
+        }
+
+        // Если одно значение число, а другое логическое — сравнивать их нельзя:
+        if (leftVal.IsLogical != rightVal.IsLogical)
+        {
+            throw new EvaluationException(
+                "Помилка типів",
+                opCol,
+                $"Операція '{opText}' не може порівнювати ціле число та логічне значення.");
+        }
+
+        // Оба значения — целые числа BigInteger:
         BigInteger left = RequireInteger(leftVal, opCol, opText);
         BigInteger right = RequireInteger(rightVal, opCol, opText);
 

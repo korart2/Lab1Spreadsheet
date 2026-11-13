@@ -108,7 +108,7 @@ public class SpreadsheetController
         IParseTree tree = parsedTrees[addr];
         var references = new List<(string TargetAddress, int Position)>();
         CollectCellReferences(tree, references);
-
+ 
         foreach (var (targetAddr, pos) in references)
         {
             if (!table.IsValidAddress(targetAddr))
